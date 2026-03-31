@@ -1,0 +1,27 @@
+{
+  "name": "nwbot-v2",
+  "version": "0.1.0",
+  "description": "SimpleX Chat Bot v2 - Group Commands, Moderation, Notifications",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "start:debug": "node dist/index.js --debug",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "simplex-chat": "6.5.0-beta.4.4"
+  },
+  "devDependencies": {
+    "@simplex-chat/types": "^0.3.0",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "type": "module",
+  "license": "MIT"
+}
