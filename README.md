@@ -66,6 +66,51 @@ GoBot without GoKey works as a standalone bot on the VPS (lower security, ~30-40
 
 ---
 
+## Build and run
+
+**Requirements:** Go 1.24+
+
+```bash
+# Clone
+git clone https://github.com/saschadaemgen/GoBot.git
+cd GoBot
+
+# Build
+make build
+
+# Run
+make run
+
+# Test
+make test
+
+# Lint
+make lint
+```
+
+**Configuration** via environment variables:
+
+| Variable | Default | Description |
+|:---------|:--------|:------------|
+| GOBOT_LOG_LEVEL | info | Log verbosity: debug, info, warn, error |
+| GOBOT_WSS_PORT | 6000 | WSS listen port for GoKey connections |
+| GOBOT_STANDALONE | true | Enable standalone mode (no GoKey required) |
+
+**Project structure:**
+
+```
+GoBot/
+  cmd/gobot/           # Application entry point
+  internal/
+    config/            # Configuration management
+    logger/            # Structured logging (slog)
+  docs/                # Architecture, security, API reference
+    seasons/           # Season protocols, plans, handoffs
+  Makefile             # Build, test, lint, run, clean
+```
+
+---
+
 ## Security model
 
 | Scenario | What the attacker gets |
@@ -111,13 +156,14 @@ GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified iden
 
 | Component | Status |
 |:----------|:-------|
-| GoBot Go service | Season 2 - planned |
+| GoBot Go service | Season 2 - in development (Sprint 1 complete) |
+| GoKey Wire Protocol | Sprint 0 - finalized ([spec](docs/GOKEY-WIRE-PROTOCOL.md)) |
 | GoKey ESP32 firmware | Season 3 - planned (SimpleGo SMP stack proven) |
 | GoUNITY certificate authority | Season 4 - repo forked, step-ca evaluating |
-| GoKey Wire Protocol | Sprint 0 - designed, not implemented |
-| Season 1 TypeScript prototype | Complete - API research done, findings documented |
 
 **Season 1 achievements:** Complete SimpleX bot API research, all GroupMember types verified, 10 working commands, deployed prototype, security analysis of the bot paradox, Directory Bot research, hardware architecture designed and validated.
+
+**Season 2 progress:** GoKey Wire Protocol v0.2.0 specified. Go project initialized with CI, structured logging, and configuration management. TypeScript prototype retired.
 
 ---
 
@@ -155,11 +201,13 @@ GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified iden
 
 | Season | Focus | Status |
 |:-------|:------|:-------|
-| 1 | Research, prototype, API verification, architecture design | DONE |
-| 2 | GoBot Go service, GoKey Wire Protocol, permission system | Planned |
+| 1 | Research, prototype, API verification, architecture design | Complete |
+| 2 | GoBot Go service, GoKey Wire Protocol, permission system | Active |
 | 3 | GoKey ESP32 firmware (SimpleGo template) | Planned |
 | 4 | GoUNITY integration (step-ca, certificates, challenge-response) | Planned |
 | 5 | Auto-moderation, multi-group, admin dashboard | Future |
+
+See [Season Index](docs/seasons/SEASON-INDEX.md) for detailed season documentation.
 
 ---
 

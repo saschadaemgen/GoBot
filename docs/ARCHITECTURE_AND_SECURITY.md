@@ -140,7 +140,7 @@ When running without GoKey, GoBot holds all keys locally. This mode exists for u
 
 | Dependency | Version | Purpose |
 |:-----------|:--------|:--------|
-| Go | 1.22+ | Runtime |
+| Go | 1.24+ | Runtime |
 | gorilla/websocket | latest | WSS server for GoKey |
 | mattn/go-sqlite3 | latest | Metadata storage |
 | crypto/ed25519 | stdlib | Command signature verification |

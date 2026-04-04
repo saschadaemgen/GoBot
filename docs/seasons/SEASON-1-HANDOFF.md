@@ -14,7 +14,7 @@
 3. **No em dashes** - use hyphens or rewrite
 4. **Conventional Commits:** `type(scope): description`
 5. **Season-based development** with protocol and handoff docs
-6. **Season/Plan/Handoff documents are INTERNAL** - never committed to repos
+6. **Season documents** live in `docs/seasons/` in the GoBot repo
 
 ---
 
@@ -43,7 +43,7 @@ With GoKey: ~85-90% of SimpleX security preserved.
 
 | Repo | URL | Language | Contains |
 |:-----|:----|:---------|:---------|
-| GoBot | github.com/saschadaemgen/GoBot | Go (Season 2+) / TS (Season 1 prototype) | Proxy service, docs, season protocols |
+| GoBot | github.com/saschadaemgen/GoBot | Go | Proxy service, docs, season protocols |
 | GoUNITY | github.com/saschadaemgen/GoUNITY | Go | step-ca fork, CA for identity verification |
 | GoKey | Template in SimpleGo repo | C (ESP-IDF) | ESP32 crypto engine (Season 3) |
 
@@ -55,17 +55,33 @@ With GoKey: ~85-90% of SimpleX security preserved.
 
 ```
 C:\Projects\GoBot\
-  README.md                              # Final (split-crypto architecture)
+  README.md
   LICENSE                                 # AGPL-3.0
+  Makefile                                # build, test, lint, run, clean
+  go.mod                                  # Go 1.24
+  cmd/
+    gobot/
+      main.go                             # Entry point with signal handling
+  internal/
+    config/
+      config.go                           # Env var configuration
+      config_test.go                      # 5 tests
+    logger/
+      logger.go                           # Structured logging (slog)
+  .github/
+    workflows/
+      ci.yml                              # Build + test + lint
   docs/
-    SYSTEM-ARCHITECTURE.md               # Full system (GoBot+GoKey+GoUNITY)
+    SYSTEM-ARCHITECTURE.md                # Full system (GoBot+GoKey+GoUNITY)
     ARCHITECTURE_AND_SECURITY.md          # GoBot Go service specific
     CONCEPT.md                            # Technical concept v3
+    GOKEY-WIRE-PROTOCOL.md                # Wire protocol v0.2.0 (finalized)
     SIMPLEX-BOT-API-REFERENCE.md          # Verified SimpleX types/methods
-    SEASON-1-PROTOCOL.md                  # Season 1 complete protocol
-  gobot/                                  # TypeScript prototype (Season 1 only)
-    src/                                  # NOT the production code
-    package.json                          # Will be replaced by Go in Season 2
+    seasons/
+      SEASON-INDEX.md                     # Overview of all seasons
+      SEASON-PLAN.md                      # Living sprint checklist
+      SEASON-1-PROTOCOL.md               # Season 1 complete protocol
+      SEASON-1-HANDOFF.md                # This document
 ```
 
 ### GoUNITY Repo
@@ -247,8 +263,10 @@ git add -A && git commit -m "type(scope): desc" && git push
 cd C:\Projects\GoUNITY
 git add -A && git commit -m "type(scope): desc" && git push
 
-# Check SimpleX types
-grep -A 20 "interface GroupMember {" /opt/gobot/node_modules/@simplex-chat/types/dist/types.d.ts
+# Build and test (Go)
+make build
+make test
+make lint
 ```
 
 ---

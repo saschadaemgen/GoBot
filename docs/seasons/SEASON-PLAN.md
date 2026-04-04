@@ -1,12 +1,12 @@
 # Season Plan
 
 **Current Season:** 2
-**Current Sprint:** 0
+**Current Sprint:** 1
 **Last Updated:** April 4, 2026
 
 ---
 
-## Sprint 0: GoKey Wire Protocol Specification
+## Sprint 0: GoKey Wire Protocol Specification - COMPLETE
 
 **Deliverable:** `docs/GOKEY-WIRE-PROTOCOL.md`
 
@@ -23,21 +23,21 @@
 - [x] Signed errors (prevent spoofed error injection)
 - [x] NTP sync strategy (VPS relay + 6h resync)
 - [x] Resolve open questions
-- [ ] Final review
+- [x] Final review
 
 ---
 
-## Sprint 1: GoBot Go Project Setup
+## Sprint 1: GoBot Go Project Setup - IN PROGRESS
 
-- [ ] `go mod init` with module path
-- [ ] Project directory structure (`cmd/`, `internal/`, `pkg/`)
-- [ ] Makefile (build, test, lint, run)
-- [ ] GitHub Actions CI (build + test + lint)
-- [ ] Basic logging framework
-- [ ] Configuration management (env vars, config file)
-- [ ] README update (Go instructions, remove TS references)
-- [ ] .gitignore for Go
-- [ ] First passing test
+- [x] `go mod init` with module path
+- [x] Project directory structure (`cmd/`, `internal/`)
+- [x] Makefile (build, test, lint, run)
+- [x] GitHub Actions CI (build + test + lint)
+- [x] Basic logging framework
+- [x] Configuration management (env vars)
+- [x] README update (Go instructions, TS references removed)
+- [x] .gitignore for Go
+- [x] First passing test (5 config tests)
 
 ---
 
