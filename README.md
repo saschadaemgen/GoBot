@@ -4,8 +4,7 @@
 
 <p align="center">
   <strong>The world's first hardware-secured moderation bot for encrypted messaging.</strong><br>
-  Runs natively on ESP32-S3 with eFuse-sealed firmware. No server. No SSH. No attack surface.<br>
-  Also available as a self-hosted server deployment for standard infrastructure.
+  Your server holds the connections. Your hardware holds the keys. Nobody reads your messages.<br>
 </p>
 
 <p align="center">
@@ -16,425 +15,165 @@
 
 ---
 
-GoBot is a moderation and verification bot for SimpleX Chat groups. It works with the standard, unmodified SimpleX app. Users don't need to install anything special - they just interact with GoBot through normal chat messages.
-
-What makes GoBot unique: it is the first messenger bot designed to run on dedicated security hardware. Built on [SimpleGo's](https://github.com/saschadaemgen/SimpleGo) native C implementation of the SimpleX Messaging Protocol - the world's first non-Haskell SMP implementation (47 source files, 21,863 lines of C, verified against the official SimpleX Chat App) - GoBot runs as a FreeRTOS task on an ESP32-S3 microcontroller with Secure Boot, Flash Encryption, and permanently burned eFuses. Once deployed, not even the owner can modify the firmware or extract keys. The bot becomes a sealed, autonomous moderation appliance.
-
-GoBot is the enforcement arm of [GoUNITY](https://github.com/saschadaemgen/GoUNITY) - the verified identity system for SimpleX. While GoUNITY issues verified username certificates, GoBot enforces them in groups: checking certificates, maintaining ban lists, and executing moderation actions. Together, they solve SimpleX's biggest unsolved problem - effective group moderation without breaking privacy.
-
-**The key insight:** GoBot works with the standard, unmodified SimpleX app. Users don't need to install anything special. They just interact with GoBot through normal chat messages. This means GoUNITY verification works for every SimpleX user on every platform - phone, desktop, CLI - today, without waiting for upstream changes.
-
----
-
-## The problem GoBot solves
-
-SimpleX groups today have no effective moderation tools:
-
-- **Ban evasion:** Banned users rejoin in seconds with a new profile
-- **No automation:** Admins must manually review every new member and every report
-- **No verification:** No way to distinguish legitimate users from spam accounts
-- **No rate limiting:** Spammers can flood groups faster than admins can react
-- **No cross-group coordination:** Each group's ban list starts from zero
-
-But there is a deeper problem that no other bot project addresses:
-
-- **Every bot is a backdoor.** Any bot with admin rights in an E2E encrypted group receives all messages in cleartext. Commercial bots like Rose, Combot, and Shieldy centralize this risk across millions of groups on servers you don't own and can't audit. Even SimpleX's own Directory Bot stores all messages in listed groups as an architectural side effect of its chat client architecture. You can encrypt 4 layers or 40 layers - the bot is the endpoint, and it decrypts everything.
-
-GoBot addresses both problems: effective moderation AND hardware-enforced security that eliminates the traditional bot attack surface.
-
----
-
-## Two deployment models
-
-### Model 1: Hardware Bot (SimpleGo Native)
-
-GoBot runs as a FreeRTOS task directly on the ESP32-S3, leveraging SimpleGo's complete native C implementation of the SMP protocol. All four encryption layers (Double Ratchet X448, 2x NaCl cryptobox, TLS 1.3) run natively on the microcontroller. No external server, no CLI, no SSH, no operating system attack surface.
-
-```
-+---------------------------+     +------------------+     +------------------+
-|  ESP32-S3 (SimpleGo HW)  |     |   SMP Server     |     |   Group Members  |
-|                           |     |                  |     |   (SimpleX App)  |
-|  [network_task] Core 0    |<--->|  Message queues  |<--->|  Standard app    |
-|  TLS 1.3 + SMP transport  |     |  E2E encrypted   |     |  No mods needed  |
-|                           |     |                  |     |                  |
-|  [smp_app_task] Core 1    |     +------------------+     +------------------+
-|  Double Ratchet, NaCl     |
-|  Contact management       |
-|                           |
-|  [gobot_task] Core 1      |
-|  Command parsing          |
-|  Moderation engine        |
-|  GoUNITY verification     |
-|  Ban list (NVS Flash)     |
-|                           |
-|  SECURITY:                |
-|  Secure Boot v2 (RSA-3072)|
-|  Flash Encrypt (AES-256)  |
-|  JTAG permanently disabled|
-|  eFuses burned & locked   |
-|  ATECC608B Secure Element |
-+---------------------------+
-```
-
-**Security guarantees:**
-- Firmware cannot be modified after eFuse burn (Secure Boot v2, RSA-PSS with RSA-3072)
-- Flash contents cannot be read externally (AES-256-XTS encryption)
-- No SSH, no shell, no debug interface (JTAG permanently disabled via eFuse)
-- Identity keys stored in external secure element (ATECC608B, CC EAL6+ rated)
-- No message logging possible (no logging code in sealed firmware, verifiable via reproducible build)
-- Physical tamper detection via conductive mesh on GPIO interrupt
-- Even the device owner cannot extract keys or modify behavior
-- Without display task: ~100 KB additional RAM freed for bot logic
-
-### Model 2: Server Bot (Node.js SDK)
-
-GoBot runs as a Node.js process using the official `simplex-chat` npm package with the Haskell core embedded via native FFI. Self-hosted on your own server, alongside your SMP server or separately.
-
-```
-+------------------+     +------------------+     +------------------+
-|    GoBot         |     |   SMP Server     |     |   Group Members  |
-|    (VPS/Server)  |     |                  |     |   (SimpleX App)  |
-|                  |     |                  |     |                  |
-|  simplex-chat    |<--->|  Message queues  |<--->|  Standard app    |
-|  Node.js SDK     |     |  E2E encrypted   |     |  No mods needed  |
-|  (native FFI)    |     |                  |     |                  |
-|                  |     |                  |     |                  |
-|  GoBot logic     |     |                  |     |                  |
-|  (TypeScript)    |     |                  |     |                  |
-+------------------+     +------------------+     +------------------+
-```
-
-**Trade-offs:** Easier to deploy and update, but the server is a traditional attack surface. SSH compromise = full access to all group messages and moderation controls.
-
----
-
-## The bot security problem - and why hardware matters
-
 > "We use SimpleX - the most private messaging protocol on Earth. No user IDs, no metadata, double ratchet encryption, quantum-resistant, the whole nine yards. Then we invite a chatbot with admin rights that reads every message, lives on a Linux box with password 'changeme', and calls it 'group security'. That's like building a nuclear bunker and leaving the front door open because the pizza guy needs to get in."
 
-Every group bot on every platform - Telegram, Discord, Matrix, SimpleX - is fundamentally a privacy compromise. The bot decrypts messages because it must. The question is only: who controls the decryption endpoint?
+GoBot is a moderation and verification bot for SimpleX Chat groups - but unlike every other bot on every other platform, **your server never sees a single message**.
 
-| Deployment | Attack surface | Who can read messages |
-|:-----------|:--------------|:---------------------|
-| Commercial hosted bot (Rose, Combot) | SSH, cloud provider, bot operator, law enforcement | Bot operator + anyone who compromises their servers |
-| Self-hosted VPS bot (GoBot Server) | SSH, OS vulnerabilities, weak passwords | Server admin + anyone who compromises the server |
-| **GoBot Hardware (ESP32-S3 + eFuse)** | **Physical access with lab equipment only** | **Nobody - firmware is sealed, no logging, no debug** |
+GoBot splits the bot into two halves: a Go service on your VPS that holds network connections (but cannot decrypt anything), and an ESP32-S3 device at your home that holds all keys and performs all cryptography. Messages flow through your server as opaque 16 KB encrypted blocks. The ESP32 decrypts them, checks for bot commands, and sends back only the result - never the message text. The server is a dumb pipe. The hardware is the brain.
 
-The Hardware Model doesn't make the bot "more encrypted" - it makes the bot **tamper-proof**. The firmware is verified at boot, the flash is encrypted, debug interfaces are permanently disabled, and the code provably contains no message logging. This is a completely new category that has never existed before in the messenger bot space.
+This architecture is based on proven security patterns used by Cloudflare Keyless SSL, Qubes Split GPG, FIDO2 hardware keys, and the global banking HSM infrastructure - applied for the first time to E2E encrypted messenger bots. Independent security analysis confirms the design is sound and novel enough to be publishable as an academic paper.
+
+---
+
+## How it works
+
+```
+[Your VPS]                              [Your home]
+GoBot (Go service)                       GoKey (ESP32-S3)
+Holds SMP connections                    Holds ALL private keys
+Receives encrypted blocks                eFuse sealed firmware
+Cannot decrypt anything                  Decrypts, checks for commands
+                                         Message text stays here
+     |                                        |
+     |--- encrypted 16 KB block ---WSS/mTLS-->|
+     |                                        |
+     |                                   Decrypt (3-4 ms)
+     |                                   Command? !kick Bob
+     |                                        |
+     |<-- "CMD:kick:Bob" (signed) -----------|
+     |                                        |
+     Executes kick                       Plaintext NEVER
+     Never saw the message               leaves the ESP32
+
+     Stecker ziehen = Bot sofort tot. Server ist eine leere Huelle.
+```
+
+**What a compromised server sees:** Encrypted blocks in, short signed command strings back. No message content. No private keys. No ratchet state. Nothing to steal.
+
+**What it takes to break this:** Physical access to the ESP32 AND laboratory equipment for side-channel analysis. Not a password. Not an exploit. A soldering iron and an oscilloscope.
+
+---
+
+## Three components, three repos, one system
+
+| Component | What it does | Where it runs | Repository |
+|:----------|:-------------|:-------------|:-----------|
+| **GoBot** | Dumb proxy - holds SMP connections, forwards encrypted blocks, executes commands | VPS (Go service) | [GoBot](https://github.com/saschadaemgen/GoBot) |
+| **GoKey** | Secure core - holds all keys, decrypts/encrypts, parses commands, signs responses | ESP32-S3 at home | Template in [SimpleGo](https://github.com/saschadaemgen/SimpleGo) |
+| **GoUNITY** | Identity - Ed25519 certificate authority for user verification and ban enforcement | VPS (Go service) | [GoUNITY](https://github.com/saschadaemgen/GoUNITY) (fork of step-ca) |
+
+GoBot without GoKey works as a standalone bot on the VPS (lower security, ~30-40% of SimpleX guarantees). Adding GoKey raises security to ~85-90%. The hardware is optional but recommended.
+
+---
+
+## Security model
+
+| Scenario | What the attacker gets |
+|:---------|:----------------------|
+| Attacker has root on VPS | Encrypted blocks they cannot read. Signed commands they cannot forge. |
+| Attacker steals the server's hard drive | Encrypted database without keys. Worthless. |
+| Attacker intercepts VPS-to-ESP32 traffic | mTLS encrypted. Cannot read or inject. |
+| Attacker has the ESP32 device | eFuse-sealed firmware. Flash encrypted. JTAG disabled. Needs lab equipment. |
+| Attacker has VPS AND ESP32 | Full compromise. This is the only scenario that breaks the system. |
+
+### Security hardening (from independent analysis)
+
+The architecture was reviewed against known attack patterns. Two critical issues were identified and their fixes are part of the design:
+
+**Response Oracle Fix:** Every response from GoKey to GoBot is constant-size (padded to identical length), constant-time (identical code paths), and always produces a 16 KB outgoing dummy block - even for ignored messages. This prevents a compromised VPS from learning which messages trigger bot commands through size/timing analysis.
+
+**Command Replay Fix:** Every signed command includes a monotonic sequence number, timestamp, group ID, and hash of the triggering message block. Signatures are unique and non-replayable. A compromised VPS cannot replay old commands.
+
+**ChaCha20 over AES:** The ESP32-S3 hardware AES accelerator is vulnerable to side-channel power analysis (confirmed on ESP32-V3/C3/C6). GoKey uses ChaCha20-Poly1305 in software (3x faster on ESP32-S3, naturally constant-time, immune to power analysis).
+
+---
+
+## GoUNITY - identity verification
+
+GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified identities in SimpleX groups. GoUNITY is a fork of [smallstep/certificates](https://github.com/smallstep/certificates) (step-ca) - a production-grade certificate authority written in Go.
+
+**Why this matters:** SimpleX has no persistent user identity. Banned users rejoin with a new profile in seconds. GoUNITY solves this with Ed25519 certificates bound to verified identities. Bans are linked to the certificate, not the SimpleX profile.
+
+**Verification flow:**
+1. User registers at id.simplego.dev (email + payment)
+2. GoUNITY issues Ed25519 signed certificate
+3. User sends certificate to GoBot via DM
+4. GoKey verifies signature locally (no server contact)
+5. GoKey sends challenge nonce
+6. User signs nonce with private key (proves key ownership)
+7. User is verified - no certificate sharing or replay possible
+
+**What step-ca gives us for free:** Certificate signing, CRL generation, HSM integration (YubiKey), OIDC login, REST API, database backends, custom certificate templates with OID extensions. We build the web frontend and challenge-response logic on top.
 
 ---
 
 ## Current status
 
-GoBot v0.0.1-alpha (Server Model) is deployed and running. The Hardware Model is in design phase, leveraging SimpleGo's proven SMP implementation.
+| Component | Status |
+|:----------|:-------|
+| GoBot Go service | Season 2 - planned |
+| GoKey ESP32 firmware | Season 3 - planned (SimpleGo SMP stack proven) |
+| GoUNITY certificate authority | Season 4 - repo forked, step-ca evaluating |
+| GoKey Wire Protocol | Sprint 0 - designed, not implemented |
+| Season 1 TypeScript prototype | Complete - API research done, findings documented |
 
-**Working right now (Server Model):**
-- SimpleX Chat bot using the official `simplex-chat` Node.js SDK (native FFI, no CLI dependency)
-- Auto-accept contact requests with configurable welcome message
-- Auto-accept group invitations
-- Group and direct message support
-- Modular command system with register + dispatch pattern
-- Per-user rate limiting (sliding window)
-- Profile avatar support via `apiUpdateProfile`
-- Runs as a systemd service with auto-restart
-
-**Implemented commands:**
-
-| Command | Description | Status |
-|:--------|:-----------|:-------|
-| !help | Show available commands | Working |
-| !time | Current time (Europe/Berlin) | Working |
-| !date | Current date | Working |
-| !status | Bot uptime, memory, node version | Working |
-| !ping | Check if bot is online | Working |
-| !members | List group members | Working |
-| !kick \<name\> | Remove a member from the group | Working |
-| !warn \<name\> | Warn a member (3x = auto-kick) | Working |
-| !warnings \<name\> | Check warnings for a member | Working |
-| !clearwarn \<name\> | Clear warnings for a member | Working |
+**Season 1 achievements:** Complete SimpleX bot API research, all GroupMember types verified, 10 working commands, deployed prototype, security analysis of the bot paradox, Directory Bot research, hardware architecture designed and validated.
 
 ---
 
-## How GoBot works
+## Planned bot commands
 
-### The doorman
+**Admin commands** (require moderator/admin/owner role):
 
-When a new user joins a GoBot-moderated group, GoBot acts as a doorman:
+| Command | Action |
+|:--------|:-------|
+| !kick \<user\> | Remove member from group |
+| !ban \<user\> \<reason\> | Ban by GoUNITY username (persistent) |
+| !unban \<user\> | Remove ban |
+| !mute \<user\> \<duration\> | Temporarily restrict to observer |
+| !unmute \<user\> | Restore member role |
+| !warn \<user\> | Issue tracked warning |
+| !clearwarn \<user\> | Clear warnings |
+| !banlist | Show active bans |
+| !reports | Show pending user reports |
+| !mode verified/mixed/open | Set group verification mode |
 
-```
-User joins group
-  |
-  v
-GoBot: "Welcome! This group requires GoUNITY verification.
-        Please send your certificate to verify your identity.
-        Get one at https://id.simplego.dev/register"
-  |
-  v
-User sends certificate (copy-paste from GoUNITY website)
-  |
-  v
-GoBot verifies:
-  1. Ed25519 signature valid?          -> YES
-  2. Certificate expired?              -> NO
-  3. Username on ban list?             -> NO
-  4. Minimum verification level met?   -> YES
-  |
-  v
-GoBot: "Verified! Welcome, MeinPrinz."
-GoBot grants full messaging permissions.
-```
+**User commands** (everyone):
 
-For groups in "mixed mode", unverified users can still participate but with restrictions (message limits, no files, no links).
-
-### Moderation commands
-
-Group admins interact with GoBot through simple chat commands:
-
-```
-Admin commands (in group or DM to GoBot):
-
-/ban MeinPrinz harassment         Ban user with reason
-/mute MeinPrinz 24h               Mute user for 24 hours
-/restrict MeinPrinz 5/h           Limit to 5 messages per hour
-/warn MeinPrinz                   Issue a warning (tracked)
-/unban MeinPrinz                  Remove ban
-/unmute MeinPrinz                 Remove mute
-/status MeinPrinz                 Show user's moderation history
-/banlist                          Show all active bans
-/reports                          Show pending user reports
-/mode verified                    Set group to verified-only
-/mode mixed                       Set group to mixed mode
-/mode open                        Set group to open (no verification)
-/help                             Show all commands
-```
-
-### User commands
-
-Regular users can also interact with GoBot:
-
-```
-User commands (DM to GoBot):
-
-/verify <certificate>             Submit GoUNITY certificate
-/report MeinPrinz spam            Report a user to admins
-/mystatus                         Check your own verification status
-/rules                            Show group rules
-```
-
-### Automated moderation
-
-GoBot can act autonomously based on configurable rules:
-
-```
-Auto-moderation rules:
-
-  Spam detection:
-    [x] Auto-mute after 10 messages in 60 seconds
-    [x] Auto-delete messages with known spam patterns
-    [ ] Auto-ban after 3 auto-mutes
-
-  New member restrictions:
-    [x] Read-only for first 5 minutes
-    [x] No files for first 24 hours
-    [x] No links for first 24 hours
-
-  Flood protection:
-    [x] Max 30 messages per hour per user
-    [x] Max 5 images per hour per user
-    [ ] Slow mode: 1 message per 30 seconds
-```
-
----
-
-## GoUNITY integration
-
-GoBot is the bridge between GoUNITY certificates and SimpleX groups.
-
-### Certificate flow
-
-```
-1. User registers "MeinPrinz" at id.simplego.dev
-2. User receives Ed25519 signed certificate
-3. User joins SimpleX group (standard app)
-4. GoBot asks for certificate
-5. User sends certificate as text message to GoBot
-6. GoBot verifies signature locally (no GoUNITY contact)
-7. GoBot stores: username -> group member mapping (local only)
-8. GoBot grants permissions based on verification level
-
-GoUNITY server is NEVER contacted during verification.
-GoUNITY never learns which groups the user joins.
-```
-
-### Ban enforcement
-
-```
-Admin: /ban MeinPrinz harassment
-
-GoBot:
-  1. Adds "MeinPrinz" to local ban list
-  2. Removes user from group
-  3. If "MeinPrinz" tries to rejoin:
-     a. Submits certificate -> GoBot checks ban list -> REJECTED
-     b. No certificate -> Group is verified-only -> REJECTED
-     c. New certificate "DifferentName" -> Allowed (new identity, new chance)
-        But costs 5-30 EUR + new verification
-```
-
-### CRL synchronization
-
-GoBot periodically fetches the Certificate Revocation List from GoUNITY:
-
-```
-Daily (configurable):
-  1. GoBot fetches https://id.simplego.dev/v1/crl
-  2. CRL contains: list of revoked usernames + GoUNITY signature
-  3. GoBot verifies CRL signature
-  4. GoBot cross-references with group members
-  5. Revoked members get notified and optionally removed
-```
-
----
-
-## Multi-group support
-
-A single GoBot instance can moderate multiple groups simultaneously:
-
-```yaml
-# gobot.yaml
-groups:
-  - name: "SimpleGo Community"
-    mode: verified
-    min_level: basic
-    auto_moderation:
-      spam_detection: true
-      flood_protection: true
-      new_member_cooldown: 5m
-    admins:
-      - "Sascha"
-      - "Moderator1"
-
-  - name: "GoShop Sellers"
-    mode: verified
-    min_level: business
-    auto_moderation:
-      spam_detection: true
-    admins:
-      - "Sascha"
-
-  - name: "Casual Chat"
-    mode: mixed
-    restrictions_unverified:
-      messages_per_hour: 10
-      send_files: false
-    admins:
-      - "Sascha"
-      - "Moderator2"
-```
-
----
-
-## Technology stack
-
-### Hardware Model (ESP32-S3 Native)
-
-| Component | Technology | Reason |
-|:----------|:-----------|:-------|
-| Hardware | ESP32-S3 (LilyGo T-Deck Plus or custom PCB) | Proven SimpleGo platform, dual-core 240 MHz, 8 MB PSRAM |
-| Firmware | ESP-IDF 5.5.2 / FreeRTOS | Real-time OS, no Linux attack surface |
-| SMP Protocol | SimpleGo native C (47 files, 21,863 LOC) | First non-Haskell SMP implementation worldwide |
-| Encryption | X448 Double Ratchet + 2x NaCl + TLS 1.3 | 4 independent layers, verified against SimpleX App |
-| Crypto libraries | mbedTLS + libsodium + wolfSSL | Hardware-accelerated AES, audited libraries |
-| Key storage | ATECC608B + OPTIGA Trust M + SE050 (triple-vendor) | Three vendors: if one has a backdoor, the full key cannot be reconstructed |
-| Tamper protection | Secure Boot v2 + Flash Encryption + eFuse | Firmware sealed permanently after burn |
-| Bot state | NVS Flash (encrypted via eFuse-bound key) | Ban lists, warnings, verified users |
-
-### Server Model (Node.js)
-
-| Component | Technology | Reason |
-|:----------|:-----------|:-------|
-| Bot runtime | TypeScript / Node.js | Official SDK support, type safety, async/await |
-| SimpleX interface | simplex-chat npm package | Native FFI to Haskell core, no CLI dependency |
-| Database | SQLite (via SDK) | Managed by SimpleX core, encrypted with SQLCipher |
-| Hosting | Any Linux server | Minimal resources (1 CPU, 512 MB RAM) |
-
----
-
-## Self-hosting
-
-### Server Model
-
-```bash
-git clone https://github.com/saschadaemgen/GoBot.git
-cd GoBot/gobot
-mkdir -p data
-npm install
-npm run build
-npm start
-```
-
-### Hardware Model
-
-```bash
-# Requires SimpleGo development environment (ESP-IDF 5.5.2)
-git clone https://github.com/saschadaemgen/GoBot.git
-cd GoBot/gobot-hardware
-idf.py set-target esp32s3
-idf.py build
-idf.py flash
-
-# PRODUCTION: Burn security eFuses (IRREVERSIBLE)
-# See docs/EFUSE-PROVISIONING.md
-```
+| Command | Action |
+|:--------|:-------|
+| !help | Show available commands |
+| !verify \<code\> | Submit GoUNITY verification |
+| !report \<user\> \<reason\> | Report to admins |
+| !mystatus | Check verification status |
+| !rules | Show group rules |
+| !ping | Check if bot is online |
 
 ---
 
 ## Roadmap
 
-| Phase | Focus | Status |
-|:------|:------|:-------|
-| 0 | Concept + Architecture | DONE |
-| 1 | Core bot: SimpleX SDK integration, message handling, group commands, moderation basics (Server Model) | DONE |
-| 2 | GoUNITY integration: certificate verification, ban enforcement | Planned |
-| 3 | Advanced moderation: ban/mute/restrict/report, persistent warnings | Planned |
-| 4 | Auto-moderation: spam detection, flood protection, cooldowns | Planned |
-| 5 | Hardware Model: GoBot as FreeRTOS task in SimpleGo firmware | Planned |
-| 6 | Multi-group: single instance managing multiple groups | Planned |
-| 7 | Admin dashboard: web UI for configuration and monitoring | Future |
-| 8 | GoShop integration: order verification, seller trust badges | Future |
-
----
-
-## Comparison with existing bots
-
-| Feature | Telegram bots | Discord bots | SimpleX (now) | GoBot (Server) | GoBot (Hardware) |
-|:--------|:-------------|:-------------|:--------------|:--------------|:----------------|
-| Group moderation | Mature | Mature | None | Working (alpha) | Planned |
-| Ban enforcement | Phone-linked | Account-linked | Broken | Certificate-linked | Certificate-linked |
-| Identity verification | Phone number | Account + roles | None | GoUNITY | GoUNITY |
-| Privacy preserved | No | No | Yes (too much) | Yes | Yes |
-| Self-hostable | Via Bot API | Via Bot API | N/A | Full | Full |
-| E2E encrypted | No | No | Yes | Yes | Yes |
-| Tamper-proof | No | No | No | No | **Yes (eFuse sealed)** |
-| No-log provable | No | No | No | No | **Yes (sealed firmware)** |
-| Physical attack surface | Cloud servers | Cloud servers | VPS | VPS | **Device only** |
-
-GoBot is the first moderation bot that provides effective moderation, privacy preservation, **and** hardware-enforced tamper resistance. No other solution offers all three.
+| Season | Focus | Status |
+|:-------|:------|:-------|
+| 1 | Research, prototype, API verification, architecture design | DONE |
+| 2 | GoBot Go service, GoKey Wire Protocol, permission system | Planned |
+| 3 | GoKey ESP32 firmware (SimpleGo template) | Planned |
+| 4 | GoUNITY integration (step-ca, certificates, challenge-response) | Planned |
+| 5 | Auto-moderation, multi-group, admin dashboard | Future |
 
 ---
 
 ## SimpleGo ecosystem
 
-GoBot is the automation layer of the SimpleGo ecosystem.
-
-| Project | What it does | Repository |
-|:--------|:-------------|:-----------|
-| **[SimpleGo](https://github.com/saschadaemgen/SimpleGo)** | Dedicated hardware messenger on ESP32-S3 | [SimpleGo](https://github.com/saschadaemgen/SimpleGo) |
-| **[GoRelay](https://github.com/saschadaemgen/GoRelay)** | Encrypted relay server (SMP + GRP) | [GoRelay](https://github.com/saschadaemgen/GoRelay) |
-| **[GoChat](https://github.com/saschadaemgen/GoChat)** | Browser-native encrypted chat plugin | [GoChat](https://github.com/saschadaemgen/GoChat) |
-| **[GoShop](https://github.com/saschadaemgen/GoShop)** | End-to-end encrypted e-commerce | [GoShop](https://github.com/saschadaemgen/GoShop) |
-| **[GoBot](https://github.com/saschadaemgen/GoBot)** | Moderation + automation bot (this project) | [GoBot](https://github.com/saschadaemgen/GoBot) |
-| **[GoUNITY](https://github.com/saschadaemgen/GoUNITY)** | Verified identity + moderation | [GoUNITY](https://github.com/saschadaemgen/GoUNITY) |
+| Project | What it does |
+|:--------|:-------------|
+| [SimpleGo](https://github.com/saschadaemgen/SimpleGo) | Dedicated hardware messenger on ESP32-S3 - first native C implementation of SMP worldwide |
+| [GoRelay](https://github.com/saschadaemgen/GoRelay) | Encrypted relay server (SMP + GRP) |
+| [GoChat](https://github.com/saschadaemgen/GoChat) | Browser-native encrypted chat plugin |
+| [GoShop](https://github.com/saschadaemgen/GoShop) | End-to-end encrypted e-commerce |
+| [GoBot](https://github.com/saschadaemgen/GoBot) | Moderation bot (this project) |
+| [GoKey](https://github.com/saschadaemgen/SimpleGo) | Hardware crypto engine for GoBot (SimpleGo template) |
+| [GoUNITY](https://github.com/saschadaemgen/GoUNITY) | Certificate authority for identity verification (step-ca fork) |
 
 ---
 
@@ -449,5 +188,5 @@ AGPL-3.0
 </p>
 
 <p align="center">
-  <strong>GoBot - effective moderation for encrypted groups. No compromises on privacy. Hardware-enforced.</strong>
+  <strong>Your server holds the connections. Your hardware holds the keys. Nobody reads your messages.</strong>
 </p>
