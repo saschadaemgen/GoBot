@@ -22,7 +22,7 @@
 - [x] Error codes and severity classification
 - [x] Signed errors (prevent spoofed error injection)
 - [x] NTP sync strategy (VPS relay + 6h resync)
-- [ ] Resolve open questions
+- [x] Resolve open questions
 - [ ] Final review
 
 ---

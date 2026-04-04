@@ -1,7 +1,7 @@
 # GoKey Wire Protocol Specification
 
-**Version:** 0.2.0-draft
-**Status:** Draft
+**Version:** 0.2.0
+**Status:** Final
 **Sprint:** 0 (Season 2)
 **Scope:** GoBot (VPS) <-> GoKey (ESP32-S3) communication
 
@@ -275,7 +275,8 @@ established.
   "protocol_version": 1,
   "pubkey_fingerprint": "sha256:a1b2c3d4e5f6...",
   "last_seq": 1000,
-  "firmware_version": "1.0.0"
+  "firmware_version": "1.0.0",
+  "known_queues": ["smp15.simplex.im#abc123", "smp15.simplex.im#def456"]
 }
 ```
 
@@ -289,6 +290,7 @@ established.
 | pubkey_fingerprint | string | yes | SHA-256 of Ed25519 public key |
 | last_seq | integer | yes | Current sequence counter value |
 | firmware_version | string | yes | GoKey firmware semver |
+| known_queues | string[] | yes | List of queue_ids GoKey can decrypt |
 
 GoBot validates the public key fingerprint against its known
 key. If mismatch, connection is rejected with an error.
@@ -297,6 +299,10 @@ GoBot checks `last_seq` against its own record. If GoBot's
 last seen seq is higher than GoKey's `last_seq`, this indicates
 possible NVS corruption or rollback attack - connection is
 rejected with a security alert.
+
+GoBot uses `known_queues` to filter incoming blocks. Blocks
+from queues not in the list are not forwarded to GoKey,
+reducing unnecessary load on the ESP32.
 
 #### 4.2.2 `result` - Command Result or Dummy
 
@@ -360,7 +366,7 @@ dummy.
 | action.command | string | yes | kick/ban/mute/block/warn/reply/none |
 | action.target_member_id | string | yes | Target member (empty for dummy) |
 | action.group_id | string | yes | Context group (empty for dummy) |
-| action.reply_text | string | yes | Bot reply text (empty for dummy) |
+| action.reply_text | string | yes | Bot reply text (max 2048 chars, empty for dummy) |
 | action.block_hash | string | yes | SHA-256 of original block (empty for dummy) |
 | signature | string | yes | Ed25519 signature (see 5.1) |
 
@@ -715,21 +721,34 @@ RECONNECT_BASE          = 1        # seconds
 RECONNECT_MAX           = 30       # seconds
 NTP_RESYNC_INTERVAL     = 21600    # seconds (6 hours)
 WSS_PORT_DEFAULT        = 6000     # default WSS listen port
+REPLY_TEXT_MAX_LENGTH   = 2048     # characters
 ```
 
 ---
 
-## 12. Open Questions
+## 12. Design Decisions
 
-- [ ] Should GoKey support batch processing (multiple blocks per
-  round-trip) or strictly one-at-a-time?
-- [ ] Should the protocol support a `rotate_key` message type
-  for periodic Ed25519 key refresh?
-- [ ] Maximum `reply_text` length? Needs to fit within FRAME_SIZE
-  after all other fields and base64 overhead.
-- [ ] Should `hello` include a list of known queue_ids so GoBot
-  can pre-filter irrelevant blocks?
+Resolved during Sprint 0 review:
+
+**Batch processing:** No. Strictly one block at a time. The
+ESP32 has limited resources, and single block round-trips
+(3-4ms decryption + 100-500ms random delay) are fast enough.
+Batching adds complexity without real benefit. Can be added
+in a future protocol version if needed.
+
+**Key rotation message type:** No. Ed25519 keys are stored in
+eFuse and are not rotatable by design - that is the security
+advantage. Key rotation means provisioning a new GoKey device,
+which is a physical operation, not a protocol feature.
+
+**Maximum reply_text length:** 2,048 characters. More than
+sufficient for any bot reply. Enforced by GoKey before signing.
+
+**Queue list in hello:** Yes. GoKey sends its `known_queues`
+in the handshake. GoBot filters incoming blocks against this
+list and does not forward blocks from unknown queues, reducing
+unnecessary load on the ESP32.
 
 ---
 
-*Draft v0.2.0 - Subject to review and iteration.*
+*Version 0.2.0 - Sprint 0 deliverable, Season 2.*
