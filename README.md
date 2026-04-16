@@ -23,6 +23,8 @@ GoBot splits the bot into two halves: a Go service on your VPS that holds networ
 
 This architecture is based on proven security patterns used by Cloudflare Keyless SSL, Qubes Split GPG, FIDO2 hardware keys, and the global banking HSM infrastructure - applied for the first time to E2E encrypted messenger bots. Independent security analysis confirms the design is sound and novel enough to be publishable as an academic paper.
 
+GoBot also serves as the community relay engine for [GoLab](https://github.com/saschadaemgen/GoLab) - a privacy-first developer community platform that brings GitLab-style collaboration and Twitter-style social feeds to the SimpleX ecosystem. In this role, GoBot handles channel fan-out, permission enforcement, and certificate-based moderation for communities of thousands.
+
 ---
 
 ## How it works
@@ -58,11 +60,49 @@ Cannot decrypt anything                  Decrypts, checks for commands
 
 | Component | What it does | Where it runs | Repository |
 |:----------|:-------------|:-------------|:-----------|
-| **GoBot** | Dumb proxy - holds SMP connections, forwards encrypted blocks, executes commands | VPS (Go service) | [GoBot](https://github.com/saschadaemgen/GoBot) |
-| **GoKey** | Secure core - holds all keys, decrypts/encrypts, parses commands, signs responses | ESP32-S3 at home | Template in [SimpleGo](https://github.com/saschadaemgen/SimpleGo) |
-| **GoUNITY** | Identity - Ed25519 certificate authority for user verification and ban enforcement | VPS (Go service) | [GoUNITY](https://github.com/saschadaemgen/GoUNITY) (fork of step-ca) |
+| **GoBot** | Dumb proxy - holds SMP connections, forwards encrypted blocks, executes commands | VPS (Go service) | This repo |
+| [GoKey](https://github.com/saschadaemgen/SimpleGo) | Secure core - holds all keys, decrypts/encrypts, parses commands, signs responses | ESP32-S3 at home | [SimpleGo template](https://github.com/saschadaemgen/SimpleGo) |
+| [GoUNITY](https://github.com/saschadaemgen/GoUNITY) | Identity - Ed25519 certificate authority for user verification and ban enforcement | VPS (Go service) | [GoUNITY repo](https://github.com/saschadaemgen/GoUNITY) |
 
 GoBot without GoKey works as a standalone bot on the VPS (lower security, ~30-40% of SimpleX guarantees). Adding GoKey raises security to ~85-90%. The hardware is optional but recommended.
+
+---
+
+## GoLab community relay
+
+Beyond group moderation, GoBot serves as the relay engine for [GoLab](https://github.com/saschadaemgen/GoLab) - a privacy-first developer community platform with GitLab-style projects and Twitter-style activity feeds.
+
+In this role, GoBot handles:
+
+| Function | Description |
+|:---------|:-----------|
+| Channel fan-out | Distribute posts to all channel subscribers via SMP queues |
+| Permission enforcement | Check GoUNITY certificates and power levels before relaying |
+| Certificate verification | Verify Ed25519 identity certificates via challenge-response |
+| Activity routing | Route ActivityStreams messages (posts, reactions, follows) to correct channels |
+| CRL enforcement | Reject messages from revoked certificates |
+| Hardware identity | Forward GoKey challenge-response for hardware-backed verification |
+
+GoBot manages the SMP queue pairs for all community members. When a user posts in a channel, GoBot fans the message out to all subscriber queues. In GoKey mode, GoBot handles this without ever seeing the message content.
+
+```
+GoLab Browser Client
+  |
+  | ActivityStreams message (signed with GoUNITY certificate)
+  |
+  v
+SMP Queue (E2E encrypted)
+  |
+  v
+GoBot (relay + moderation)
+  |
+  +---> Subscriber A (via SMP queue)
+  +---> Subscriber B (via SMP queue)
+  +---> Subscriber C (via SMP queue)
+  +---> GoLab App Server (via internal API, for persistence)
+```
+
+See [GoLab Architecture](https://github.com/saschadaemgen/GoLab/blob/main/docs/ARCHITECTURE_AND_SECURITY.md) for the full community platform design.
 
 ---
 
@@ -104,8 +144,9 @@ GoBot/
   internal/
     config/            # Configuration management
     logger/            # Structured logging (slog)
-  docs/                # Architecture, security, API reference
+  docs/                # Architecture, security, protocols
     seasons/           # Season protocols, plans, handoffs
+    internal/          # Private docs (gitignored)
   Makefile             # Build, test, lint, run, clean
 ```
 
@@ -135,7 +176,7 @@ The architecture was reviewed against known attack patterns. Two critical issues
 
 ## GoUNITY - identity verification
 
-GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified identities in SimpleX groups. GoUNITY is a fork of [smallstep/certificates](https://github.com/smallstep/certificates) (step-ca) - a production-grade certificate authority written in Go.
+GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified identities in SimpleX groups and [GoLab](https://github.com/saschadaemgen/GoLab) community channels. GoUNITY is a fork of [smallstep/certificates](https://github.com/smallstep/certificates) (step-ca) - a production-grade certificate authority written in Go.
 
 **Why this matters:** SimpleX has no persistent user identity. Banned users rejoin with a new profile in seconds. GoUNITY solves this with Ed25519 certificates bound to verified identities. Bans are linked to the certificate, not the SimpleX profile.
 
@@ -150,6 +191,8 @@ GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified iden
 
 **What step-ca gives us for free:** Certificate signing, CRL generation, HSM integration (YubiKey), OIDC login, REST API, database backends, custom certificate templates with OID extensions. We build the web frontend and challenge-response logic on top.
 
+See [GoUNITY Architecture](https://github.com/saschadaemgen/GoUNITY/blob/main/docs/ARCHITECTURE_AND_SECURITY.md) for the full certificate authority design.
+
 ---
 
 ## Current status
@@ -157,9 +200,10 @@ GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified iden
 | Component | Status |
 |:----------|:-------|
 | GoBot Go service | Season 2 - in development (Sprint 1 complete) |
-| GoKey Wire Protocol | Sprint 0 - finalized ([spec](docs/GOKEY-WIRE-PROTOCOL.md)) |
-| GoKey ESP32 firmware | Season 3 - planned (SimpleGo SMP stack proven) |
+| GoKey Wire Protocol | v0.2.0 - finalized ([spec](docs/GOKEY-WIRE-PROTOCOL.md)) |
+| GoKey ESP32 firmware | Season 3 - planned |
 | GoUNITY certificate authority | Season 4 - repo forked, step-ca evaluating |
+| GoLab community relay | Season 5+ - planned (after core moderation) |
 
 **Season 1 achievements:** Complete SimpleX bot API research, all GroupMember types verified, 10 working commands, deployed prototype, security analysis of the bot paradox, Directory Bot research, hardware architecture designed and validated.
 
@@ -205,9 +249,30 @@ GoBot enforces [GoUNITY](https://github.com/saschadaemgen/GoUNITY) verified iden
 | 2 | GoBot Go service, GoKey Wire Protocol, permission system | Active |
 | 3 | GoKey ESP32 firmware (SimpleGo template) | Planned |
 | 4 | GoUNITY integration (step-ca, certificates, challenge-response) | Planned |
-| 5 | Auto-moderation, multi-group, admin dashboard | Future |
+| 5 | GoLab community relay, channel fan-out, activity routing | Planned |
+| 6 | Auto-moderation, multi-group, admin dashboard | Future |
 
 See [Season Index](docs/seasons/SEASON-INDEX.md) for detailed season documentation.
+
+---
+
+## Documentation
+
+| Document | Description |
+|:---------|:-----------|
+| [System Architecture](docs/SYSTEM-ARCHITECTURE.md) | Full system design (GoBot + GoKey + GoUNITY + GoLab) |
+| [Architecture and Security](docs/ARCHITECTURE_AND_SECURITY.md) | GoBot-specific technical architecture and threat model |
+| [Concept](docs/CONCEPT.md) | High-level technical concept and design decisions |
+| [GoKey Wire Protocol](docs/GOKEY-WIRE-PROTOCOL.md) | Communication protocol between GoBot and GoKey |
+| [Season Index](docs/seasons/SEASON-INDEX.md) | Links to all season documentation |
+
+### Related documentation in other repos
+
+| Document | Description |
+|:---------|:-----------|
+| [GoKey Architecture](https://github.com/saschadaemgen/SimpleGo/blob/main/templates/gokey/docs/ARCHITECTURE_AND_SECURITY.md) | GoKey hardware security and crypto pipeline |
+| [GoUNITY Architecture](https://github.com/saschadaemgen/GoUNITY/blob/main/docs/ARCHITECTURE_AND_SECURITY.md) | Certificate authority design |
+| [GoLab Architecture](https://github.com/saschadaemgen/GoLab/blob/main/docs/ARCHITECTURE_AND_SECURITY.md) | Community platform design (uses GoBot as relay) |
 
 ---
 
@@ -215,13 +280,17 @@ See [Season Index](docs/seasons/SEASON-INDEX.md) for detailed season documentati
 
 | Project | What it does |
 |:--------|:-------------|
-| [SimpleGo](https://github.com/saschadaemgen/SimpleGo) | Dedicated hardware messenger on ESP32-S3 - first native C implementation of SMP worldwide |
+| [SimpleGo](https://github.com/saschadaemgen/SimpleGo) | Dedicated hardware messenger on ESP32-S3 |
 | [GoRelay](https://github.com/saschadaemgen/GoRelay) | Encrypted relay server (SMP + GRP) |
-| [GoChat](https://github.com/saschadaemgen/GoChat) | Browser-native encrypted chat plugin |
+| [GoChat](https://github.com/saschadaemgen/GoChat) | Browser-native encrypted chat widget |
+| [GoBot](https://github.com/saschadaemgen/GoBot) | Hardware-secured moderation bot |
+| [GoKey](https://github.com/saschadaemgen/SimpleGo) | Hardware crypto engine for GoBot (ESP32-S3) |
+| [GoUNITY](https://github.com/saschadaemgen/GoUNITY) | Certificate authority for identity verification |
+| [GoLab](https://github.com/saschadaemgen/GoLab) | Privacy-first developer community platform |
 | [GoShop](https://github.com/saschadaemgen/GoShop) | End-to-end encrypted e-commerce |
-| [GoBot](https://github.com/saschadaemgen/GoBot) | Moderation bot (this project) |
-| [GoKey](https://github.com/saschadaemgen/SimpleGo) | Hardware crypto engine for GoBot (SimpleGo template) |
-| [GoUNITY](https://github.com/saschadaemgen/GoUNITY) | Certificate authority for identity verification (step-ca fork) |
+| [GoTube](https://github.com/saschadaemgen/GoTube) | Encrypted video platform |
+| [GoBook](https://github.com/saschadaemgen/GoBook) | Encrypted publishing platform |
+| [GoOS](https://github.com/saschadaemgen/GoOS) | Privacy-focused Linux (Buildroot, RK3566) |
 
 ---
 

@@ -28,3 +28,6 @@ Thumbs.db
 # Coverage
 coverage.out
 coverage.html
+
+# Internal documentation - not for git
+docs/internal/
